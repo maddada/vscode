@@ -160,8 +160,10 @@ export class ExtHostExtensionService extends AbstractExtHostExtensionService {
 		this._instaService.createInstance(ExtHostDownloadService);
 
 		// Register CLI Server for ipc
-		if (this._initData.remote.isRemote && this._initData.remote.authority) {
-			const cliServer = this._instaService.createInstance(CLIServer);
+		const cliServer = this._initData.remote.isRemote && this._initData.remote.authority
+			? this._instaService.createInstance(CLIServer)
+			: undefined;
+		if (cliServer) {
 			process.env['VSCODE_IPC_HOOK_CLI'] = cliServer.ipcHandlePath;
 		}
 
@@ -178,6 +180,9 @@ export class ExtHostExtensionService extends AbstractExtHostExtensionService {
 		performance.mark('code/extHost/didInitAPI');
 
 		(async () => {
+			if (!cliServer || !await cliServer.whenReady()) {
+				return;
+			}
 			const socketPath = process.env['VSCODE_IPC_HOOK_CLI'];
 			const codeServerSocketPath = process.env['CODE_SERVER_SESSION_SOCKET']
 			if (!socketPath || !codeServerSocketPath) {
