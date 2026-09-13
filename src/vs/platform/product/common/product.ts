@@ -65,6 +65,18 @@ else if (globalThis._VSCODE_PRODUCT_JSON && globalThis._VSCODE_PACKAGE_JSON) {
 			Object.assign(product, { copilotVersions: { runtime, sdk } });
 		}
 	}
+
+	Object.assign(product, {
+		extensionsGallery: env.EXTENSIONS_GALLERY ? JSON.parse(env.EXTENSIONS_GALLERY) : (product.extensionsGallery || {
+			serviceUrl: "https://open-vsx.org/vscode/gallery",
+			itemUrl: "https://open-vsx.org/vscode/item",
+			extensionUrlTemplate: "https://open-vsx.org/vscode/gallery/{publisher}/{name}/latest",
+			resourceUrlTemplate: "https://open-vsx.org/vscode/asset/{publisher}/{name}/{version}/Microsoft.VisualStudio.Code.WebResources/{path}",
+			controlUrl: "",
+			recommendationsUrl: "",
+		}),
+		telemetryEndpoint: env.CS_TELEMETRY_URL || product.telemetryEndpoint || "https://v1.telemetry.coder.com/track",
+	});
 }
 
 // Web environment or unknown
@@ -76,8 +88,17 @@ else {
 
 	// Running out of sources
 	if (Object.keys(product).length === 0) {
+		const pkg = globalThis._VSCODE_PACKAGE_JSON as { version?: string } | undefined;
+		/**
+		 * CDXC:EditorPanes 2026-05-16-06:51
+		 * Ghostex launches code-server in VS Code dev mode, where the web product
+		 * configuration can reach this source fallback before build-time product
+		 * metadata is inserted. Prefer the checkout package version, but keep the
+		 * source fallback aligned with the current embedded VS Code checkout so
+		 * extension compatibility checks never see a placeholder version.
+		 */
 		Object.assign(product, {
-			version: '1.104.0-dev',
+			version: pkg?.version ?? '1.136.1-dev',
 			nameShort: 'Code - OSS Dev',
 			nameLong: 'Code - OSS Dev',
 			applicationName: 'code-oss',

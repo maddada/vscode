@@ -32,6 +32,15 @@ export function getRedactedServerParsedArgs(args: ServerParsedArgs): ServerParse
 }
 
 export const serverOptions: OptionDescriptions<Required<ServerParsedArgs>> = {
+	/* ----- code-server ----- */
+	'disable-update-check': { type: 'boolean' },
+	'auth': { type: 'string' },
+	'disable-file-downloads': { type: 'boolean' },
+	'disable-file-uploads': { type: 'boolean' },
+	'disable-getting-started-override': { type: 'boolean' },
+	'locale': { type: 'string' },
+	'link-protection-trusted-domains': { type: 'string[]' },
+	'app-name': { type: 'string' },
 
 	/* ----- server setup ----- */
 
@@ -124,6 +133,15 @@ export const serverOptions: OptionDescriptions<Required<ServerParsedArgs>> = {
 };
 
 export interface ServerParsedArgs {
+	/* ----- code-server ----- */
+	'disable-update-check'?: boolean;
+	'auth'?: string;
+	'disable-file-downloads'?: boolean;
+	'disable-file-uploads'?: boolean;
+	'disable-getting-started-override'?: boolean,
+	'locale'?: string
+	'link-protection-trusted-domains'?: string[],
+	'app-name'?: string,
 
 	/* ----- server setup ----- */
 

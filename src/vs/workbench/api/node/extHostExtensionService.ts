@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as _http from 'http';
 import * as performance from '../../../base/common/performance.js';
 import type * as vscode from 'vscode';
 import { createApiFactoryAndRegisterActors } from '../common/extHost.api.impl.js';
@@ -18,6 +19,7 @@ import { ExtensionRuntime } from '../common/extHostTypes.js';
 import { CLIServer } from './extHostCLIServer.js';
 import { realpathSync } from '../../../base/node/pfs.js';
 import { ExtHostConsoleForwarder } from './extHostConsoleForwarder.js';
+import { IExtHostWorkspace } from '../common/extHostWorkspace.js';
 import { ExtHostDiskFileSystemProvider } from './extHostDiskFileSystemProvider.js';
 import nodeModule from 'node:module';
 import { assertType } from '../../../base/common/types.js';
@@ -158,8 +160,10 @@ export class ExtHostExtensionService extends AbstractExtHostExtensionService {
 		this._instaService.createInstance(ExtHostDownloadService);
 
 		// Register CLI Server for ipc
-		if (this._initData.remote.isRemote && this._initData.remote.authority) {
-			const cliServer = this._instaService.createInstance(CLIServer);
+		const cliServer = this._initData.remote.isRemote && this._initData.remote.authority
+			? this._instaService.createInstance(CLIServer)
+			: undefined;
+		if (cliServer) {
 			process.env['VSCODE_IPC_HOOK_CLI'] = cliServer.ipcHandlePath;
 		}
 
@@ -174,6 +178,55 @@ export class ExtHostExtensionService extends AbstractExtHostExtensionService {
 			.install();
 
 		performance.mark('code/extHost/didInitAPI');
+
+		(async () => {
+			if (!cliServer || !await cliServer.whenReady()) {
+				return;
+			}
+			const socketPath = process.env['VSCODE_IPC_HOOK_CLI'];
+			const codeServerSocketPath = process.env['CODE_SERVER_SESSION_SOCKET']
+			if (!socketPath || !codeServerSocketPath) {
+				return;
+			}
+			const workspace = this._instaService.invokeFunction((accessor) => {
+				const workspaceService = accessor.get(IExtHostWorkspace);
+				return workspaceService.workspace;
+			});
+			const entry = {
+				workspace,
+				socketPath
+			};
+			const message = JSON.stringify({entry});
+			await new Promise<void>((resolve, reject) => {
+				const opts: _http.RequestOptions = {
+					path: '/add-session',
+					socketPath: codeServerSocketPath,
+					method: 'POST',
+					headers: {
+						'content-type': 'application/json',
+					}
+				};
+				const req = _http.request(opts, (res) => {
+					res.on('error', reject);
+					res.on('end', () => {
+						try {
+							if (res.statusCode === 200) {
+								resolve();
+							} else {
+								reject(new Error('Unexpected status code: ' + res.statusCode));
+							}
+						} catch (e: unknown) {
+							reject(e);
+						}
+					});
+				});
+				req.on('error', reject);
+				req.write(message);
+				req.end();
+			});
+		})().catch(error => {
+			this._logService.error(error);
+		});
 
 		// Do this when extension service exists, but extensions are not being activated yet.
 		const configProvider = await this._extHostConfiguration.getConfigProvider();

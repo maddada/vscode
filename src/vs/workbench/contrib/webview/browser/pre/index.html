@@ -5,7 +5,7 @@
 	<meta charset="UTF-8">
 
 	<meta http-equiv="Content-Security-Policy"
-		content="default-src 'none'; script-src 'sha256-FFQoOVVa2tOE3uqUvirwaMNT20TZmrHcL2aaOjJ8BUo=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+		content="default-src 'none'; script-src 'sha256-24QqbpzqcqSyIGvg/ZwFRy5pPlhmVBa8CkUREEIUnBw=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
 
 	<!-- Disable pinch zooming -->
 	<meta name="viewport"
@@ -253,7 +253,7 @@
 			}
 
 			const swPath = encodeURI(`service-worker.js?v=${expectedWorkerVersion}&vscode-resource-base-authority=${searchParams.get('vscode-resource-base-authority')}&remoteAuthority=${searchParams.get('remoteAuthority') ?? ''}&platform=${searchParams.get('platform')}`);
-			navigator.serviceWorker.register(swPath, { type: 'module', updateViaCache: 'none' })
+			navigator.serviceWorker.register(swPath)
 				.then(async registration => {
 					if (navigator.serviceWorker.controller) {
 						// A previous SW is already controlling. Force an update
@@ -331,6 +331,12 @@
 				const parentOrigin = searchParams.get('parentOrigin');
 
 				const hostname = location.hostname;
+
+				// It is safe to run if we are on the same host.
+				const parent = new URL(parentOrigin)
+				if (parent.hostname === hostname) {
+					return start(parentOrigin)
+				}
 
 				if (!crypto.subtle) {
 					// cannot validate, not running in a secure context
