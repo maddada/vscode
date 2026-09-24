@@ -10,7 +10,7 @@ import { SideBySideEditorInput } from '../../../common/editor/sideBySideEditorIn
 import { IWindowOpenable, IOpenWindowOptions, isWorkspaceToOpen, IOpenEmptyWindowOptions } from '../../../../platform/window/common/window.js';
 import { IHostService } from '../../../services/host/browser/host.js';
 import { ServicesAccessor, IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
-import { IWorkspaceContextService, UNTITLED_WORKSPACE_NAME } from '../../../../platform/workspace/common/workspace.js';
+import { IWorkspaceContextService, UNTITLED_WORKSPACE_NAME, WorkbenchState } from '../../../../platform/workspace/common/workspace.js';
 import { ExplorerFocusCondition, TextFileContentProvider, VIEWLET_ID, ExplorerCompressedFocusContext, ExplorerCompressedFirstFocusContext, ExplorerCompressedLastFocusContext, FilesExplorerFocusCondition, ExplorerFolderContext, VIEW_ID } from '../common/files.js';
 import { ExplorerViewPaneContainer } from './explorerViewlet.js';
 import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
@@ -52,6 +52,38 @@ import { RemoveRootFolderAction } from '../../../browser/actions/workspaceAction
 import { OpenEditorsView } from './views/openEditorsView.js';
 import { ExplorerView } from './views/explorerView.js';
 import { IListService } from '../../../../platform/list/browser/listService.js';
+
+/**
+ * CDXC:CodeEditor 2026-09-23 WHY:
+ * A folder link means browse that folder, not silently add a duplicate workspace root. Outside folders use normal workspace addition; a workspace reload leaves the IPC request queued until the new workbench can confirm the reveal.
+ */
+CommandsRegistry.registerCommand('_files.browseFolder', async (accessor: ServicesAccessor, resource: URI): Promise<'opened' | 'reload'> => {
+	const contextService = accessor.get(IWorkspaceContextService);
+	const fileService = accessor.get(IFileService);
+	const workspaceEditingService = accessor.get(IWorkspaceEditingService);
+	const explorerService = accessor.get(IExplorerService);
+	const viewsService = accessor.get(IViewsService);
+	resource = URI.revive(resource);
+	if (!(await fileService.stat(resource)).isDirectory) {
+		throw new Error(nls.localize('browseFolder.notFolder', "The requested path is not a folder."));
+	}
+	if (!contextService.getWorkspaceFolder(resource)) {
+		const needsReload = contextService.getWorkbenchState() !== WorkbenchState.WORKSPACE;
+		await workspaceEditingService.addFolders([{ uri: resource }], true);
+		if (!contextService.getWorkspaceFolder(resource)) {
+			throw new Error(nls.localize('browseFolder.notAdded', "The folder could not be added to this workspace."));
+		}
+		if (needsReload) {
+			return 'reload';
+		}
+	}
+	const view = await viewsService.openView<ExplorerView>(explorerService.getViewId() ?? VIEW_ID, true);
+	if (!view) {
+		throw new Error(nls.localize('browseFolder.noExplorer', "The Explorer view is unavailable."));
+	}
+	await view.browseFolder(resource);
+	return 'opened';
+});
 
 export const openWindowCommand = (accessor: ServicesAccessor, toOpen: IWindowOpenable[], options?: IOpenWindowOptions) => {
 	if (Array.isArray(toOpen)) {
