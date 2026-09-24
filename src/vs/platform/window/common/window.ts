@@ -69,6 +69,7 @@ export interface IOpenWindowOptions extends IBaseOpenWindowsOptions {
 	readonly gotoLineMode?: boolean;
 
 	readonly waitMarkerFileURI?: URI;
+	readonly promptEditor?: boolean;
 
 	/**
 	 * When set, the opened window is asked to open the chat session identified

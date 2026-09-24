@@ -965,6 +965,21 @@ export class ExplorerView extends ViewPane implements IExplorerView {
 		}
 	}
 
+	public async browseFolder(resource: URI): Promise<void> {
+		await this.selectResource(resource, 'force');
+		const item = this.explorerService.findClosest(resource);
+		if (!item?.isDirectory || !this.uriIdentityService.extUri.isEqual(item.resource, resource)) {
+			throw new Error(nls.localize('browseFolder.unavailable', "The folder could not be revealed in Explorer."));
+		}
+		if (item !== this.tree.getInput()) {
+			await this.tree.expand(item);
+			this.tree.reveal(item, 0.5);
+			this.tree.setFocus([item]);
+			this.tree.setSelection([item]);
+		}
+		this.tree.domFocus();
+	}
+
 	itemsCopied(stats: ExplorerItem[], cut: boolean, previousCut: ExplorerItem[] | undefined): void {
 		this.fileCopiedContextKey.set(stats.length > 0);
 		this.resourceCutContextKey.set(cut && stats.length > 0);

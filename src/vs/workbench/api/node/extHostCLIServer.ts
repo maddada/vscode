@@ -13,7 +13,7 @@ import { ILogService } from '../../../platform/log/common/log.js';
 import { hasWorkspaceFileExtension } from '../../../platform/workspace/common/workspace.js';
 
 export interface OpenCommandPipeArgs {
-	type: 'open';
+	type: 'open' | 'promptEditor';
 	fileURIs?: string[];
 	folderURIs?: string[];
 	forceNewWindow?: boolean;
@@ -30,6 +30,11 @@ export interface OpenCommandPipeArgs {
 export interface OpenExternalCommandPipeArgs {
 	type: 'openExternal';
 	uris: string[];
+}
+
+export interface BrowseFolderPipeArgs {
+	type: 'browseFolder';
+	folderURIs: [string];
 }
 
 export interface StatusPipeArgs {
@@ -49,7 +54,7 @@ export interface ClipboardPipeArgs {
 	content: string;
 }
 
-export type PipeCommand = OpenCommandPipeArgs | StatusPipeArgs | OpenExternalCommandPipeArgs | ExtensionManagementPipeArgs | ClipboardPipeArgs;
+export type PipeCommand = OpenCommandPipeArgs | BrowseFolderPipeArgs | StatusPipeArgs | OpenExternalCommandPipeArgs | ExtensionManagementPipeArgs | ClipboardPipeArgs;
 
 export interface ICommandsExecuter {
 	executeCommand<T>(id: string, ...args: unknown[]): Promise<T>;
@@ -116,6 +121,18 @@ export class CLIServerBase {
 				const data: PipeCommand | any = JSON.parse(chunks.join(''));
 				let returnObj: string | undefined;
 				switch (data.type) {
+					case 'promptEditor':
+						if (!Array.isArray(data.fileURIs) || data.fileURIs.length !== 1 || typeof data.fileURIs[0] !== 'string' || typeof data.waitMarkerFilePath !== 'string' || !data.waitMarkerFilePath) {
+							throw new Error('A prompt file URI and wait marker are required.');
+						}
+						returnObj = await this.open(data);
+						break;
+					case 'browseFolder':
+						if (!Array.isArray(data.folderURIs) || data.folderURIs.length !== 1 || typeof data.folderURIs[0] !== 'string') {
+							throw new Error('A single folder URI is required.');
+						}
+						returnObj = await this._commands.executeCommand<string>('_files.browseFolder', URI.parse(data.folderURIs[0]));
+						break;
 					case 'open':
 						returnObj = await this.open(data);
 						break;
@@ -133,7 +150,7 @@ export class CLIServerBase {
 						break;
 					default:
 						sendResponse(404, `Unknown message type: ${data.type}`);
-						break;
+						return;
 				}
 				sendResponse(200, returnObj);
 			} catch (e) {
@@ -146,6 +163,7 @@ export class CLIServerBase {
 
 	private async open(data: OpenCommandPipeArgs): Promise<undefined> {
 		const { fileURIs, folderURIs, forceNewWindow, diffMode, mergeMode, addMode, removeMode, forceReuseWindow, gotoLineMode, waitMarkerFilePath, remoteAuthority } = data;
+		const promptEditor = data.type === 'promptEditor';
 		const urisToOpen: IWindowOpenable[] = [];
 		if (Array.isArray(folderURIs)) {
 			for (const s of folderURIs) {
@@ -171,8 +189,12 @@ export class CLIServerBase {
 		}
 		const waitMarkerFileURI = waitMarkerFilePath ? URI.file(waitMarkerFilePath) : undefined;
 		const preferNewWindow = !forceReuseWindow && !waitMarkerFileURI && !addMode && !removeMode;
-		const windowOpenArgs: IOpenWindowOptions = { forceNewWindow, diffMode, mergeMode, addMode, removeMode, gotoLineMode, forceReuseWindow, preferNewWindow, waitMarkerFileURI, remoteAuthority };
-		this._commands.executeCommand('_remoteCLI.windowOpen', urisToOpen, windowOpenArgs);
+		const windowOpenArgs: IOpenWindowOptions = { forceNewWindow, diffMode, mergeMode, addMode, removeMode, gotoLineMode, forceReuseWindow, preferNewWindow, waitMarkerFileURI, promptEditor, remoteAuthority };
+		if (promptEditor) {
+			await this._commands.executeCommand('_remoteCLI.promptEditor', urisToOpen, windowOpenArgs);
+		} else {
+			this._commands.executeCommand('_remoteCLI.windowOpen', urisToOpen, windowOpenArgs);
+		}
 	}
 
 	private async openExternal(data: OpenExternalCommandPipeArgs): Promise<undefined> {

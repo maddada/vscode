@@ -20,10 +20,11 @@ import { ILabelService } from '../../../platform/label/common/label.js';
 import { AbstractMessageLogger, ILogger, LogLevel } from '../../../platform/log/common/log.js';
 import { IOpenerService } from '../../../platform/opener/common/opener.js';
 import { IProductService } from '../../../platform/product/common/productService.js';
-import { IOpenWindowOptions, IWindowOpenable } from '../../../platform/window/common/window.js';
+import { IOpenWindowOptions, IWindowOpenable, isFileToOpen } from '../../../platform/window/common/window.js';
 import { IWorkbenchEnvironmentService } from '../../services/environment/common/environmentService.js';
 import { IExtensionManagementServerService } from '../../services/extensionManagement/common/extensionManagement.js';
 import { IExtensionManifestPropertiesService } from '../../services/extensions/common/extensionManifestPropertiesService.js';
+import { IHostService } from '../../services/host/browser/host.js';
 
 
 // this class contains the commands that the CLI server is reying on
@@ -39,6 +40,13 @@ CommandsRegistry.registerCommand('_remoteCLI.windowOpen', function (accessor: Se
 		return commandService.executeCommand('_files.newWindow', options);
 	}
 	return commandService.executeCommand('_files.windowOpen', toOpen, options);
+});
+
+CommandsRegistry.registerCommand('_remoteCLI.promptEditor', function (accessor: ServicesAccessor, toOpen: IWindowOpenable[], options: IOpenWindowOptions): Promise<void> {
+	if (!isWeb || toOpen.length !== 1 || !isFileToOpen(toOpen[0]) || !options?.waitMarkerFileURI) {
+		throw new Error(localize('promptEditorInvalidRequest', "Prompt editing requires one file in the Code browser workbench."));
+	}
+	return accessor.get(IHostService).openWindow(toOpen, { ...options, promptEditor: true, forceReuseWindow: true });
 });
 
 CommandsRegistry.registerCommand('_remoteCLI.getSystemStatus', function (accessor: ServicesAccessor): Promise<string | undefined> {
