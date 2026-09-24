@@ -45,6 +45,7 @@ import { VSBuffer } from '../../../../base/common/buffer.js';
 import { MarkdownString } from '../../../../base/common/htmlContent.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { showBrowserToast } from './toasts.js';
+import { IFilesConfigurationService } from '../../filesConfiguration/common/filesConfigurationService.js';
 
 enum HostShutdownReason {
 
@@ -296,6 +297,34 @@ export class BrowserHostService extends Disposable implements IHostService {
 
 		// Handle Files
 		if (fileOpenables.length > 0) {
+			/**
+			 * CDXC:PromptEditor 2026-09-23 WHY:
+			 * Browser Code defaults to auto-save, which silently accepted a cancelled external prompt edit. Suspend auto-save only for the explicit prompt resource until its editor closes, so Save and Don't Save remain meaningful without changing user or workspace preferences.
+			 */
+			if (options?.promptEditor && options.waitMarkerFileURI && fileOpenables.length === 1) {
+				const resource = fileOpenables[0].fileUri;
+				const waitMarker = options.waitMarkerFileURI;
+				return this.instantiationService.invokeFunction(async accessor => {
+					const editorService = accessor.get(IEditorService);
+					const autoSaveOverride = this._register(accessor.get(IFilesConfigurationService).disableAutoSave(resource));
+					let whenClosed: Promise<void>;
+					try {
+						const editor = await editorService.openEditor({ resource, options: { pinned: true } });
+						if (!editor) {
+							throw new Error(localize('promptEditorOpenFailed', "Could not open the prompt editor."));
+						}
+						whenClosed = this.instantiationService.invokeFunction(accessor => whenEditorClosed(accessor, [resource]));
+					} catch (error) {
+						this._store.delete(autoSaveOverride);
+						throw error;
+					}
+					// Acknowledge the open now so another queued request is not held until this editor closes.
+					void whenClosed
+						.then(() => this.fileService.del(waitMarker))
+						.catch(error => this.logService.error(error))
+						.finally(() => this._store.delete(autoSaveOverride));
+				});
+			}
 			this.withServices(async accessor => {
 				const editorService = accessor.get(IEditorService);
 
