@@ -203,8 +203,13 @@ class RemoteAuthoritiesImpl {
 		this._delegate = delegate;
 	}
 
-	setServerRootPath(product: { quality?: string; commit?: string }, serverBasePath: string | undefined): void {
-		this._serverRootPath = paths.posix.join(serverBasePath ?? '/', getServerProductSegment(product));
+	setServerRootPath(product: { quality?: string; commit?: string; serverProductSegment?: string }, serverBasePath: string | undefined): void {
+		/**
+		 * CDXC:EditorPanes 2026-05-30-08:04:
+		 * Embedded Ghostex VS Code panes must fetch grammars, snippets, themes, and file-icon resources from the same product segment mounted by the server.
+		 * Prefer the server-supplied segment so browser fallback product metadata cannot recompute `oss-dev` while the server is serving `stable-dev`.
+		 */
+		this._serverRootPath = paths.posix.join(serverBasePath ?? '/', product.serverProductSegment ?? getServerProductSegment(product));
 	}
 
 	getServerRootPath(): string {

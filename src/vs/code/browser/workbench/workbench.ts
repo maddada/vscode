@@ -187,9 +187,56 @@ class ServerKeyedAESCrypto implements ISecretStorageCrypto {
 	}
 }
 
+const localStorageSecretStorageKey = 'secrets.provider';
+
+type RemoteSecretStorageResponse = {
+	value?: string;
+	keys?: string[];
+};
+
+class RemoteSecretStorageProvider implements ISecretStorageProvider {
+
+	type: 'in-memory' | 'persisted' | 'unknown' = 'persisted';
+
+	constructor(
+		private readonly endpoint: string,
+	) { }
+
+	async get(key: string): Promise<string | undefined> {
+		const response = await this.request({ op: 'get', key });
+		return response.value;
+	}
+
+	async set(key: string, value: string): Promise<void> {
+		await this.request({ op: 'set', key, value });
+	}
+
+	async delete(key: string): Promise<void> {
+		await this.request({ op: 'delete', key });
+	}
+
+	async keys(): Promise<string[]> {
+		const response = await this.request({ op: 'keys' });
+		return response.keys ?? [];
+	}
+
+	private async request(body: Record<string, string>): Promise<RemoteSecretStorageResponse> {
+		const res = await fetch(this.endpoint, {
+			body: JSON.stringify(body),
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			method: 'POST',
+		});
+		if (!res.ok) {
+			throw new Error(`Secret storage request failed: ${res.status} ${res.statusText}`);
+		}
+		return res.json();
+	}
+}
+
 export class LocalStorageSecretStorageProvider implements ISecretStorageProvider {
 
-	private readonly storageKey = 'secrets.provider';
+	private readonly storageKey = localStorageSecretStorageKey;
 
 	private secretsPromise: Promise<Record<string, string>>;
 
@@ -602,7 +649,17 @@ class WorkspaceProvider implements IWorkspaceProvider {
 		throw new Error('Missing web configuration element');
 	}
 	const config: IWorkbenchConstructionOptions & { folderUri?: UriComponents; workspaceUri?: UriComponents; callbackRoute: string } = { ...JSON.parse(configElementAttribute), remoteAuthority: location.host }
-	const secretStorageKeyPath = (window.location.pathname + "/mint-key").replace(/\/\/+/g, "/");
+	/*
+	 * CDXC:GitHubAuthentication 2026-05-17-02:48:
+	 * Embedded code-server must keep GitHub OAuth sessions across ghostex restarts without persisting tokens in browser origin storage.
+	 * Use a same-origin server-side secret-storage endpoint backed by the persistent --user-data-dir because the browser workbench otherwise falls back to in-memory storage when no embedder provider is supplied.
+	 * Clear stale browser-side secret payloads from the earlier localStorage-backed implementation so GitHub tokens are not retained in CEF origin storage.
+	 */
+	const secretStorageKeyPath: string | undefined = undefined;
+	const remoteSecretStoragePath = (window.location.pathname.replace(/\/?$/, '/') + '.code-server-secret-storage').replace(/\/\/+/g, '/');
+	if (config.remoteAuthority) {
+		localStorage.removeItem(localStorageSecretStorageKey);
+	}
 	const secretStorageCrypto = secretStorageKeyPath && ServerKeyedAESCrypto.supported()
 		? new ServerKeyedAESCrypto(secretStorageKeyPath) : new TransparentCrypto();
 
@@ -652,7 +709,7 @@ class WorkspaceProvider implements IWorkspaceProvider {
 			}
 		},
 		secretStorageProvider: config.remoteAuthority && !secretStorageKeyPath
-			? undefined /* with a remote without embedder-preferred storage, store on the remote */
+			? new RemoteSecretStorageProvider(remoteSecretStoragePath)
 			: new LocalStorageSecretStorageProvider(secretStorageCrypto),
 	});
 })();

@@ -13,7 +13,7 @@ import { isLinux } from '../../base/common/platform.js';
 import { ILogService, LogLevel } from '../../platform/log/common/log.js';
 import { IServerEnvironmentService } from './serverEnvironmentService.js';
 import { extname, dirname, join, normalize, posix, resolve } from '../../base/common/path.js';
-import { FileAccess, connectionTokenCookieName, connectionTokenQueryName, Schemas, builtinExtensionsPath } from '../../base/common/network.js';
+import { FileAccess, connectionTokenCookieName, connectionTokenQueryName, Schemas, builtinExtensionsPath, getServerProductSegment } from '../../base/common/network.js';
 import { generateUuid } from '../../base/common/uuid.js';
 import { IProductService } from '../../platform/product/common/productService.js';
 import { ServerConnectionToken, ServerConnectionTokenType } from './serverConnectionToken.js';
@@ -412,6 +412,23 @@ export class WebClientServer {
 			codeServerVersion: this._productService.codeServerVersion,
 			nameShort: appName,
 			nameLong: appName,
+			/**
+			 * CDXC:EditorPanes 2026-05-30-08:04:
+			 * The embedded browser client must not infer the remote-resource route from partial product metadata.
+			 * Send the exact server product segment so `vscode-remote-resource` URLs stay aligned with the mounted code-server route.
+			 */
+			serverProductSegment: getServerProductSegment(this._productService),
+			/**
+			 * CDXC:EditorPanes 2026-05-16-06:51
+			 * Ghostex serves the VS Code dev workbench from source, so the browser
+			 * can start with source fallback product metadata before build-time
+			 * constants exist. Send the server-resolved product version with the
+			 * web configuration so built-in extensions validate against the actual
+			 * embedded VS Code checkout instead of a placeholder version.
+			 */
+			version: this._productService.version,
+			commit: this._productService.commit,
+			date: this._productService.date,
 			rootEndpoint: rootBase,
 			updateEndpoint: !this._environmentService.args['disable-update-check'] ? rootBase + '/update/check' : undefined,
 			logoutEndpoint: this._environmentService.args['auth'] && this._environmentService.args['auth'] !== "none" ? rootBase + '/logout' : undefined,

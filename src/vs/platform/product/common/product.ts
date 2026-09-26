@@ -88,8 +88,17 @@ else {
 
 	// Running out of sources
 	if (Object.keys(product).length === 0) {
+		const pkg = globalThis._VSCODE_PACKAGE_JSON as { version?: string } | undefined;
+		/**
+		 * CDXC:EditorPanes 2026-05-16-06:51
+		 * Ghostex launches code-server in VS Code dev mode, where the web product
+		 * configuration can reach this source fallback before build-time product
+		 * metadata is inserted. Prefer the checkout package version, but keep the
+		 * source fallback aligned with the current embedded VS Code checkout so
+		 * extension compatibility checks never see a placeholder version.
+		 */
 		Object.assign(product, {
-			version: '1.104.0-dev',
+			version: pkg?.version ?? '1.139.1-dev',
 			nameShort: 'Code - OSS Dev',
 			nameLong: 'Code - OSS Dev',
 			applicationName: 'code-oss',

@@ -58,34 +58,47 @@ export interface ICommandsExecuter {
 export class CLIServerBase {
 	private _server: http.Server | undefined = undefined;
 	private _disposed = false;
+	private readonly _whenReady: Promise<boolean>;
 
 	constructor(
 		private readonly _commands: ICommandsExecuter,
 		private readonly logService: ILogService,
 		private readonly _ipcHandlePath: string,
 	) {
-		this.setup();
+		this._whenReady = this.setup();
 	}
 
 	public get ipcHandlePath() {
 		return this._ipcHandlePath;
 	}
 
-	private async setup(): Promise<void> {
+	public whenReady(): Promise<boolean> {
+		return this._whenReady;
+	}
+
+	private async setup(): Promise<boolean> {
 		try {
 			const http = await import('http');
 			if (this._disposed) {
-				return;
+				return false;
 			}
 			this._server = http.createServer((req, res) => this.onRequest(req, res));
-			try {
-				this._server.listen(this.ipcHandlePath);
-				this._server.on('error', err => this.logService.error(err));
-			} catch (err) {
-				this.logService.error('Could not start open from terminal server.');
-			}
+			return await new Promise<boolean>(resolve => {
+				const server = this._server!;
+				const onListenError = (error: Error) => {
+					this.logService.error('Could not start open from terminal server.', error);
+					resolve(false);
+				};
+				server.once('error', onListenError);
+				server.listen(this.ipcHandlePath, () => {
+					server.off('error', onListenError);
+					server.on('error', error => this.logService.error(error));
+					resolve(true);
+				});
+			});
 		} catch (error) {
 			this.logService.error('Error setting up CLI server', error);
+			return false;
 		}
 	}
 
