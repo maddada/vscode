@@ -13,7 +13,7 @@ import { IURITransformer } from '../../base/common/uriIpc.js';
 import { generateUuid } from '../../base/common/uuid.js';
 import { getMachineId, getSqmMachineId, getDevDeviceId } from '../../base/node/id.js';
 import { Promises } from '../../base/node/pfs.js';
-import { ClientConnectionEvent, IMessagePassingProtocol, IPCServer, StaticRouter } from '../../base/parts/ipc/common/ipc.js';
+import { ClientConnectionEvent, IMessagePassingProtocol, IPCServer, ProxyChannel, StaticRouter } from '../../base/parts/ipc/common/ipc.js';
 import { ProtocolConstants } from '../../base/parts/ipc/common/ipc.net.js';
 import { createRandomIPCHandle } from '../../base/parts/ipc/node/ipc.net.js';
 import { IConfigurationService } from '../../platform/configuration/common/configuration.js';
@@ -68,6 +68,7 @@ import { IExtensionsScannerService } from '../../platform/extensionManagement/co
 import { ExtensionsScannerService } from './extensionsScannerService.js';
 import { IExtensionsProfileScannerService } from '../../platform/extensionManagement/common/extensionsProfileScannerService.js';
 import { IUserDataProfilesService } from '../../platform/userDataProfile/common/userDataProfile.js';
+import { TelemetryClient } from './telemetryClient.js';
 import { NullPolicyService } from '../../platform/policy/common/policy.js';
 import { OneDataSystemAppender } from '../../platform/telemetry/node/1dsAppender.js';
 import { LoggerService } from '../../platform/log/node/loggerService.js';
@@ -179,11 +180,23 @@ export async function setupServerServices(connectionToken: ServerConnectionToken
 	const requestService = new RequestService('remote', configurationService, environmentService, logService);
 	services.set(IRequestService, requestService);
 
+	let isContainer = undefined;
+	try {
+		await fs.promises.stat('/run/.containerenv');
+		isContainer = true;
+	} catch (error) { /* Does not exist, probably. */ }
+	if (!isContainer) {
+		try {
+			const content = await fs.promises.readFile('/proc/self/cgroup', 'utf8')
+			isContainer = content.includes('docker');
+		} catch (error) { /* Permission denied, probably. */ }
+	}
+
 	let oneDsAppender: ITelemetryAppender = NullAppender;
 	const isInternal = isInternalTelemetry(productService, configurationService);
 	if (supportsTelemetry(productService, environmentService)) {
-		if (!isLoggingOnly(productService, environmentService) && productService.aiConfig?.ariaKey) {
-			oneDsAppender = new OneDataSystemAppender(requestService, isInternal, eventPrefix, null, productService.aiConfig.ariaKey);
+		if (!isLoggingOnly(productService, environmentService) && productService.telemetryEndpoint) {
+			oneDsAppender = new OneDataSystemAppender(requestService, isInternal, eventPrefix, null, () => new TelemetryClient(productService.telemetryEndpoint!, machineId, isContainer));
 			disposables.add(toDisposable(() => oneDsAppender?.flush())); // Ensure the AI appender is disposed so that it flushes remaining data
 		}
 
@@ -404,6 +417,9 @@ export async function setupServerServices(connectionToken: ServerConnectionToken
 		socketServer.registerChannel('extensions', channel);
 
 		socketServer.registerChannel('mcpManagement', new McpManagementChannel(mcpManagementService, (ctx: RemoteAgentConnectionContext) => getUriTransformer(ctx.remoteAuthority)));
+
+		const languagePackChannel = ProxyChannel.fromService<RemoteAgentConnectionContext>(accessor.get(ILanguagePackService), disposables);
+		socketServer.registerChannel('languagePacks', languagePackChannel);
 
 		// clean up extensions folder
 		remoteExtensionsScanner.whenExtensionsReady().then(() => extensionManagementService.cleanUp());
