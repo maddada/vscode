@@ -357,6 +357,22 @@ export class BrowserHostService extends Disposable implements IHostService {
 
 				// Just open normally
 				else {
+					if (options?.removeMode) {
+						/**
+						 * CDXC:OSIntegration 2026-05-27-11:26:
+						 * Ghostex Quick loose-file rows close through code-server's CLI
+						 * IPC channel using removeMode with file openables. Browser VS Code
+						 * already supported removeMode for workspace folders only; close
+						 * matching file editors here so Ghostex can remove one Quick row
+						 * without leaving that file's tab open in the shared Code webview.
+						 */
+						const editors = coalesce(await pathsToEditors(fileOpenables, this.fileService, this.logService));
+						const editorIdentifiers = editors.flatMap(editor => isResourceEditorInput(editor) ? editorService.findEditors(editor.resource) : []);
+						if (editorIdentifiers.length > 0) {
+							await editorService.closeEditors(editorIdentifiers, { preserveFocus: true });
+						}
+						return;
+					}
 					for (const openable of fileOpenables) {
 
 						// Same Window: open via editor service in current window
