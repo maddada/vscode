@@ -193,7 +193,13 @@ export class CLIServerBase {
 		if (promptEditor) {
 			await this._commands.executeCommand('_remoteCLI.promptEditor', urisToOpen, windowOpenArgs);
 		} else {
-			this._commands.executeCommand('_remoteCLI.windowOpen', urisToOpen, windowOpenArgs);
+			/**
+			 * CDXC:CodeEditor 2026-10-20 WHY:
+			 * A closed or reloaded Code page leaves its extension host alive for the reconnection grace, and its pipe answered an open at once even though no renderer would ever show it, so Ghostex's queued `file:line` open was handed to that dead workbench and lost while the reloaded page restored its old cursor (#266).
+			 * Answer only once the renderer has taken the command: a dead workbench now stays silent, and code-server moves the delivery to a live one.
+			 * SEE-ALSO: code-server src/node/vscodeSocket.ts (queued open delivery and expiry).
+			 */
+			await this._commands.executeCommand('_remoteCLI.windowOpen', urisToOpen, windowOpenArgs);
 		}
 	}
 
