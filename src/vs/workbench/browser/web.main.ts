@@ -33,6 +33,7 @@ import { ISignService } from '../../platform/sign/common/sign.js';
 import { SignService } from '../../platform/sign/browser/signService.js';
 import { IWorkbenchConstructionOptions, IWorkbench, IWorkspace, ITunnel } from './web.api.js';
 import { BrowserStorageService } from '../services/storage/browser/storageService.js';
+import { NativeWorkbenchStorageService } from '../services/storage/electron-browser/storageService.js';
 import { IStorageService } from '../../platform/storage/common/storage.js';
 import { toLocalISOString } from '../../base/common/date.js';
 import { isWorkspaceToOpen, isFolderToOpen } from '../../platform/window/common/window.js';
@@ -64,6 +65,7 @@ import { IOpenerService } from '../../platform/opener/common/opener.js';
 import { mixin, safeStringify } from '../../base/common/objects.js';
 import { IndexedDB } from '../../base/browser/indexedDB.js';
 import { WebFileSystemAccess } from '../../platform/files/browser/webFileSystemAccess.js';
+import { CodeServerClient } from '../../workbench/browser/client.js';
 import { IProgressService } from '../../platform/progress/common/progress.js';
 import { DelayedLogChannel } from '../services/output/common/delayedLogChannel.js';
 import { dirname, joinPath } from '../../base/common/resources.js';
@@ -139,6 +141,9 @@ export class BrowserMain extends Disposable {
 
 		// Startup
 		const instantiationService = workbench.startup();
+
+		const codeServerClient = this._register(instantiationService.createInstance(CodeServerClient));
+		await codeServerClient.startup();
 
 		// Window
 		this._register(instantiationService.createInstance(BrowserWindow));
@@ -478,7 +483,7 @@ export class BrowserMain extends Disposable {
 				serviceCollection.set(IWorkbenchConfigurationService, service);
 				return service;
 			}),
-			this.createStorageService(workspace, logService, userDataProfileService).then(service => {
+			this.createStorageService(workspace, environmentService, logService, userDataProfileService, userDataProfilesService, remoteAgentService).then(service => {
 				serviceCollection.set(IStorageService, service);
 				return service;
 			})
@@ -600,7 +605,21 @@ export class BrowserMain extends Disposable {
 		}));
 	}
 
-	protected async createStorageService(workspace: IAnyWorkspaceIdentifier, logService: ILogService, userDataProfileService: IUserDataProfileService): Promise<IStorageService> {
+	protected async createStorageService(workspace: IAnyWorkspaceIdentifier, environmentService: IBrowserWorkbenchEnvironmentService, logService: ILogService, userDataProfileService: IUserDataProfileService, userDataProfilesService: IUserDataProfilesService, remoteAgentService: IRemoteAgentService): Promise<IStorageService> {
+		const connection = remoteAgentService.getConnection();
+		if (this.configuration.remoteStorageEnabled && connection) {
+			const storageService = new NativeWorkbenchStorageService(workspace, userDataProfileService, userDataProfilesService, connection, environmentService);
+
+			try {
+				await storageService.initialize();
+				this.onWillShutdownDisposables.add(toDisposable(() => storageService.close()));
+				return storageService;
+			} catch (error) {
+				onUnexpectedError(error);
+				logService.error('Remote storage service initialization failed, falling back to browser storage', error);
+			}
+		}
+
 		const storageService = new BrowserStorageService(workspace, userDataProfileService, logService);
 
 		try {

@@ -314,6 +314,26 @@ export interface IWorkbenchConstructionOptions {
 	 */
 	readonly configurationDefaults?: Record<string, unknown>;
 
+	/**
+	 * Path to the user data directory.
+	 */
+	readonly userDataPath?: string
+
+	/**
+	 * Whether the "Download..." option is enabled for files.
+	 */
+	readonly isEnabledFileDownloads?: boolean
+
+	/**
+	 * Whether the "Upload..." button is enabled.
+	 */
+	readonly isEnabledFileUploads?: boolean
+
+	/**
+	 * Whether to use Coder's custom Getting Started text.
+	 */
+	readonly isEnabledCoderGettingStarted?: boolean
+
 	//#endregion
 
 	//#region Profile options
@@ -391,6 +411,11 @@ export interface IWorkbenchConstructionOptions {
 	readonly authenticationProviders?: readonly IAuthenticationProvider[];
 
 	//#endregion
+	/**
+	 * Persist workbench storage on the remote server instead of browser IndexedDB.
+	 */
+	readonly remoteStorageEnabled?: boolean;
+
 
 	//#region Development options
 

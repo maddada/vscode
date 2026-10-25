@@ -32,6 +32,15 @@ export function getRedactedServerParsedArgs(args: ServerParsedArgs): ServerParse
 }
 
 export const serverOptions: OptionDescriptions<Required<ServerParsedArgs>> = {
+	/* ----- code-server ----- */
+	'disable-update-check': { type: 'boolean' },
+	'auth': { type: 'string' },
+	'disable-file-downloads': { type: 'boolean' },
+	'disable-file-uploads': { type: 'boolean' },
+	'disable-getting-started-override': { type: 'boolean' },
+	'locale': { type: 'string' },
+	'link-protection-trusted-domains': { type: 'string[]' },
+	'app-name': { type: 'string' },
 
 	/* ----- server setup ----- */
 
@@ -57,6 +66,7 @@ export const serverOptions: OptionDescriptions<Required<ServerParsedArgs>> = {
 	'disable-experiments': OPTIONS['disable-experiments'],
 	'disable-workspace-trust': OPTIONS['disable-workspace-trust'],
 	'file-watcher-polling': { type: 'string', deprecates: ['fileWatcherPolling'] },
+	'enable-remote-storage': { type: 'boolean', cat: 'o', description: nls.localize('enable-remote-storage', 'Persist browser storage (settings, state, etc.) on the server instead of browser IndexedDB. Enables state portability across browsers/devices.') },
 	'log': OPTIONS['log'],
 	'logsPath': OPTIONS['logsPath'],
 	'force-disable-user-env': OPTIONS['force-disable-user-env'],
@@ -124,6 +134,15 @@ export const serverOptions: OptionDescriptions<Required<ServerParsedArgs>> = {
 };
 
 export interface ServerParsedArgs {
+	/* ----- code-server ----- */
+	'disable-update-check'?: boolean;
+	'auth'?: string;
+	'disable-file-downloads'?: boolean;
+	'disable-file-uploads'?: boolean;
+	'disable-getting-started-override'?: boolean,
+	'locale'?: string
+	'link-protection-trusted-domains'?: string[],
+	'app-name'?: string,
 
 	/* ----- server setup ----- */
 
@@ -194,6 +213,7 @@ export interface ServerParsedArgs {
 	'logsPath'?: string;
 
 	'force-disable-user-env'?: boolean;
+	'enable-remote-storage'?: boolean;
 	'enable-proposed-api'?: string[];
 
 	/* ----- vs code web options ----- */
