@@ -13,7 +13,7 @@ import { ILogService } from '../../../platform/log/common/log.js';
 import { hasWorkspaceFileExtension } from '../../../platform/workspace/common/workspace.js';
 
 export interface OpenCommandPipeArgs {
-	type: 'open';
+	type: 'open' | 'promptEditor';
 	fileURIs?: string[];
 	folderURIs?: string[];
 	forceNewWindow?: boolean;
@@ -30,6 +30,11 @@ export interface OpenCommandPipeArgs {
 export interface OpenExternalCommandPipeArgs {
 	type: 'openExternal';
 	uris: string[];
+}
+
+export interface BrowseFolderPipeArgs {
+	type: 'browseFolder';
+	folderURIs: [string];
 }
 
 export interface StatusPipeArgs {
@@ -49,7 +54,7 @@ export interface ClipboardPipeArgs {
 	content: string;
 }
 
-export type PipeCommand = OpenCommandPipeArgs | StatusPipeArgs | OpenExternalCommandPipeArgs | ExtensionManagementPipeArgs | ClipboardPipeArgs;
+export type PipeCommand = OpenCommandPipeArgs | BrowseFolderPipeArgs | StatusPipeArgs | OpenExternalCommandPipeArgs | ExtensionManagementPipeArgs | ClipboardPipeArgs;
 
 export interface ICommandsExecuter {
 	executeCommand<T>(id: string, ...args: unknown[]): Promise<T>;
@@ -58,34 +63,47 @@ export interface ICommandsExecuter {
 export class CLIServerBase {
 	private _server: http.Server | undefined = undefined;
 	private _disposed = false;
+	private readonly _whenReady: Promise<boolean>;
 
 	constructor(
 		private readonly _commands: ICommandsExecuter,
 		private readonly logService: ILogService,
 		private readonly _ipcHandlePath: string,
 	) {
-		this.setup();
+		this._whenReady = this.setup();
 	}
 
 	public get ipcHandlePath() {
 		return this._ipcHandlePath;
 	}
 
-	private async setup(): Promise<void> {
+	public whenReady(): Promise<boolean> {
+		return this._whenReady;
+	}
+
+	private async setup(): Promise<boolean> {
 		try {
 			const http = await import('http');
 			if (this._disposed) {
-				return;
+				return false;
 			}
 			this._server = http.createServer((req, res) => this.onRequest(req, res));
-			try {
-				this._server.listen(this.ipcHandlePath);
-				this._server.on('error', err => this.logService.error(err));
-			} catch (err) {
-				this.logService.error('Could not start open from terminal server.');
-			}
+			return await new Promise<boolean>(resolve => {
+				const server = this._server!;
+				const onListenError = (error: Error) => {
+					this.logService.error('Could not start open from terminal server.', error);
+					resolve(false);
+				};
+				server.once('error', onListenError);
+				server.listen(this.ipcHandlePath, () => {
+					server.off('error', onListenError);
+					server.on('error', error => this.logService.error(error));
+					resolve(true);
+				});
+			});
 		} catch (error) {
 			this.logService.error('Error setting up CLI server', error);
+			return false;
 		}
 	}
 
@@ -103,6 +121,18 @@ export class CLIServerBase {
 				const data: PipeCommand | any = JSON.parse(chunks.join(''));
 				let returnObj: string | undefined;
 				switch (data.type) {
+					case 'promptEditor':
+						if (!Array.isArray(data.fileURIs) || data.fileURIs.length !== 1 || typeof data.fileURIs[0] !== 'string' || typeof data.waitMarkerFilePath !== 'string' || !data.waitMarkerFilePath) {
+							throw new Error('A prompt file URI and wait marker are required.');
+						}
+						returnObj = await this.open(data);
+						break;
+					case 'browseFolder':
+						if (!Array.isArray(data.folderURIs) || data.folderURIs.length !== 1 || typeof data.folderURIs[0] !== 'string') {
+							throw new Error('A single folder URI is required.');
+						}
+						returnObj = await this._commands.executeCommand<string>('_files.browseFolder', URI.parse(data.folderURIs[0]));
+						break;
 					case 'open':
 						returnObj = await this.open(data);
 						break;
@@ -120,7 +150,7 @@ export class CLIServerBase {
 						break;
 					default:
 						sendResponse(404, `Unknown message type: ${data.type}`);
-						break;
+						return;
 				}
 				sendResponse(200, returnObj);
 			} catch (e) {
@@ -133,6 +163,7 @@ export class CLIServerBase {
 
 	private async open(data: OpenCommandPipeArgs): Promise<undefined> {
 		const { fileURIs, folderURIs, forceNewWindow, diffMode, mergeMode, addMode, removeMode, forceReuseWindow, gotoLineMode, waitMarkerFilePath, remoteAuthority } = data;
+		const promptEditor = data.type === 'promptEditor';
 		const urisToOpen: IWindowOpenable[] = [];
 		if (Array.isArray(folderURIs)) {
 			for (const s of folderURIs) {
@@ -158,8 +189,18 @@ export class CLIServerBase {
 		}
 		const waitMarkerFileURI = waitMarkerFilePath ? URI.file(waitMarkerFilePath) : undefined;
 		const preferNewWindow = !forceReuseWindow && !waitMarkerFileURI && !addMode && !removeMode;
-		const windowOpenArgs: IOpenWindowOptions = { forceNewWindow, diffMode, mergeMode, addMode, removeMode, gotoLineMode, forceReuseWindow, preferNewWindow, waitMarkerFileURI, remoteAuthority };
-		this._commands.executeCommand('_remoteCLI.windowOpen', urisToOpen, windowOpenArgs);
+		const windowOpenArgs: IOpenWindowOptions = { forceNewWindow, diffMode, mergeMode, addMode, removeMode, gotoLineMode, forceReuseWindow, preferNewWindow, waitMarkerFileURI, promptEditor, remoteAuthority };
+		if (promptEditor) {
+			await this._commands.executeCommand('_remoteCLI.promptEditor', urisToOpen, windowOpenArgs);
+		} else {
+			/**
+			 * CDXC:CodeEditor 2026-10-20 WHY:
+			 * A closed or reloaded Code page leaves its extension host alive for the reconnection grace, and its pipe answered an open at once even though no renderer would ever show it, so Ghostex's queued `file:line` open was handed to that dead workbench and lost while the reloaded page restored its old cursor (#266).
+			 * Answer only once the renderer has taken the command: a dead workbench now stays silent, and code-server moves the delivery to a live one.
+			 * SEE-ALSO: code-server src/node/vscodeSocket.ts (queued open delivery and expiry).
+			 */
+			await this._commands.executeCommand('_remoteCLI.windowOpen', urisToOpen, windowOpenArgs);
+		}
 	}
 
 	private async openExternal(data: OpenExternalCommandPipeArgs): Promise<undefined> {
