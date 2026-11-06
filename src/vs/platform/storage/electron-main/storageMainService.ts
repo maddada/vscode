@@ -11,7 +11,12 @@ import { IStorage } from '../../../base/parts/storage/common/storage.js';
 import { INativeEnvironmentService } from '../../environment/common/environment.js';
 import { IFileService } from '../../files/common/files.js';
 import { createDecorator } from '../../instantiation/common/instantiation.js';
-import { ILifecycleMainService, LifecycleMainPhase, ShutdownReason } from '../../lifecycle/electron-main/lifecycleMainService.js';
+import type { ILifecycleMainService, ShutdownReason } from '../../lifecycle/electron-main/lifecycleMainService.js';
+
+// Keep these values local so the server does not load lifecycleMainService at runtime;
+// that module imports Electron, which is not present in the code-server server image.
+const LIFECYCLE_MAIN_PHASE_AFTER_WINDOW_OPEN = 3;
+const SHUTDOWN_REASON_KILL = 2;
 import { ILogService } from '../../log/common/log.js';
 import { AbstractStorageService, isProfileUsingDefaultStorage, IStorageService, StorageScope, StorageTarget } from '../common/storage.js';
 import { ApplicationStorageMain, ApplicationSharedStorageMain, ProfileStorageMain, InMemoryStorageMain, IStorageMain, IStorageMainOptions, WorkspaceStorageMain, IStorageChangeEvent } from './storageMain.js';
@@ -92,7 +97,7 @@ export class StorageMainService extends Disposable implements IStorageMainServic
 		@ILogService private readonly logService: ILogService,
 		@INativeEnvironmentService private readonly environmentService: INativeEnvironmentService,
 		@IUserDataProfilesMainService private readonly userDataProfilesService: IUserDataProfilesMainService,
-		@ILifecycleMainService private readonly lifecycleMainService: ILifecycleMainService,
+		private readonly lifecycleMainService: ILifecycleMainService,
 		@IFileService private readonly fileService: IFileService,
 		@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,
 	) {
@@ -114,7 +119,7 @@ export class StorageMainService extends Disposable implements IStorageMainServic
 
 		// Application Storage: Warmup when any window opens
 		(async () => {
-			await this.lifecycleMainService.when(LifecycleMainPhase.AfterWindowOpen);
+			await this.lifecycleMainService.when(LIFECYCLE_MAIN_PHASE_AFTER_WINDOW_OPEN);
 
 			this.applicationStorage.init();
 			this.applicationSharedStorage.init();
@@ -253,7 +258,7 @@ export class StorageMainService extends Disposable implements IStorageMainServic
 	}
 
 	private createProfileStorage(profile: IUserDataProfile): IStorageMain {
-		if (this.shutdownReason === ShutdownReason.KILL) {
+		if (this.shutdownReason === SHUTDOWN_REASON_KILL) {
 
 			// Workaround for native crashes that we see when
 			// SQLite DBs are being created even after shutdown
@@ -292,7 +297,7 @@ export class StorageMainService extends Disposable implements IStorageMainServic
 	}
 
 	private createWorkspaceStorage(workspace: IAnyWorkspaceIdentifier): IStorageMain {
-		if (this.shutdownReason === ShutdownReason.KILL) {
+		if (this.shutdownReason === SHUTDOWN_REASON_KILL) {
 
 			// Workaround for native crashes that we see when
 			// SQLite DBs are being created even after shutdown

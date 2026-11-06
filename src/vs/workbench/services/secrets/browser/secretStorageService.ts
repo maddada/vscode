@@ -22,9 +22,9 @@ export class BrowserSecretStorageService extends BaseSecretStorageService {
 		@IBrowserWorkbenchEnvironmentService environmentService: IBrowserWorkbenchEnvironmentService,
 		@ILogService logService: ILogService
 	) {
-		// We don't have encryption in the browser so instead we use the
-		// in-memory base class implementation instead.
-		super(true, storageService, encryptionService, logService);
+		// Use remote storage if enabled, otherwise use in-memory storage
+		const useRemoteStorage = environmentService.options?.remoteStorageEnabled ?? false;
+		super(!useRemoteStorage, storageService, encryptionService, logService);
 
 		if (environmentService.options?.secretStorageProvider) {
 			this._secretStorageProvider = environmentService.options.secretStorageProvider;

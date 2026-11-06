@@ -15,7 +15,7 @@ import { Lazy } from '../../../../base/common/lazy.js';
 import { Disposable, DisposableStore, IDisposable, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { COI, Schemas } from '../../../../base/common/network.js';
 import { observableValue } from '../../../../base/common/observable.js';
-import { isEqualAuthority } from '../../../../base/common/resources.js';
+import { isEqualAuthority, isEqualOrParent } from '../../../../base/common/resources.js';
 import { listenStream } from '../../../../base/common/stream.js';
 import { URI } from '../../../../base/common/uri.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
@@ -32,6 +32,7 @@ import { INotificationService } from '../../../../platform/notification/common/n
 import { IRemoteAuthorityResolverService } from '../../../../platform/remote/common/remoteAuthorityResolver.js';
 import { ITunnelService } from '../../../../platform/tunnel/common/tunnel.js';
 import { WebviewPortMappingManager } from '../../../../platform/webview/common/webviewPortMapping.js';
+import { IBrowserWorkbenchEnvironmentService } from '../../../services/environment/browser/environmentService.js';
 import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
 import { IRemoteAgentService } from '../../../services/remote/common/remoteAgentService.js';
 import { decodeAuthority, webviewGenericCspSource, webviewMouseActivityEvent, webviewRootResourceAuthority } from '../common/webview.js';
@@ -868,6 +869,8 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 					const rangeHeader = range
 						? `bytes ${range.start}-${rangeEnd}/${result.size}`
 						: undefined;
+					// The service worker only stores responses that have an etag.
+					const etag = this._isFileCacheAllowed(uri) ? result.etag : undefined;
 					if (WebviewElement._supportsTransferableStreams.value) {
 						let controller: ReadableStreamDefaultController<Uint8Array<ArrayBuffer>> | undefined;
 						let closed = false;
@@ -919,7 +922,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 							status: range ? 206 : 200,
 							path: uri.path,
 							mime: result.mimeType,
-							etag: result.etag,
+							etag,
 							mtime: result.mtime,
 							range: rangeHeader,
 							stream,
@@ -931,7 +934,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 							status: range ? 206 : 200,
 							path: uri.path,
 							mime: result.mimeType,
-							etag: result.etag,
+							etag,
 							mtime: result.mtime,
 							range: rangeHeader,
 						});
@@ -986,6 +989,14 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 			status: 404,
 			path: uri.path,
 		});
+	}
+
+	private _isFileCacheAllowed(uri: URI): boolean {
+		if ((this._environmentService as IBrowserWorkbenchEnvironmentService).isEnabledFileCache) {
+			return true;
+		}
+		const extensionLocation = this.extension?.location;
+		return !!extensionLocation && isEqualOrParent(uri, extensionLocation);
 	}
 
 	private async localLocalhost(id: string, origin: string) {

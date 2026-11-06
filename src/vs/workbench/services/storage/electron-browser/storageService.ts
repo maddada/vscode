@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
+import { IRemoteService } from '../../../../platform/ipc/common/services.js';
 import { IStorage, Storage, MigratingStorage } from '../../../../base/parts/storage/common/storage.js';
 import { RemoteStorageService } from '../../../../platform/storage/common/storageService.js';
 import { FallbackApplicationStorageDatabaseClient, ApplicationSharedStorageDatabaseClient } from '../../../../platform/storage/common/storageIpc.js';
@@ -19,10 +19,10 @@ export class NativeWorkbenchStorageService extends RemoteStorageService {
 		workspace: IAnyWorkspaceIdentifier | undefined,
 		private readonly userDataProfileService: IUserDataProfileService,
 		userDataProfilesService: IUserDataProfilesService,
-		mainProcessService: IMainProcessService,
+		remoteService: Pick<IRemoteService, 'getChannel'>,
 		private readonly workbenchEnvironmentService: IWorkbenchEnvironmentService,
 	) {
-		super(workspace, { currentProfile: userDataProfileService.currentProfile, defaultProfile: userDataProfilesService.defaultProfile }, mainProcessService, workbenchEnvironmentService);
+		super(workspace, { currentProfile: userDataProfileService.currentProfile, defaultProfile: userDataProfilesService.defaultProfile }, remoteService as IRemoteService, workbenchEnvironmentService);
 
 		this.registerListeners();
 	}

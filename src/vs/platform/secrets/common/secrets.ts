@@ -144,8 +144,13 @@ export class BaseSecretStorageService extends Disposable implements ISecretStora
 				return await readEncryptedSecret(
 					key,
 					(fullKey) => this.getValueFromStorage(key, fullKey, storageService),
-					// If the storage service is in-memory, we don't need to decrypt
-					this._type === 'in-memory' ? (v) => Promise.resolve(v) : (v) => this._encryptionService.decrypt(v),
+					// Don't decrypt if storage is in-memory or if encryption service is not available
+					async (v) => {
+						if (this._type === 'in-memory' || !await this._encryptionService.isEncryptionAvailable()) {
+							return v;
+						}
+						return this._encryptionService.decrypt(v);
+					},
 					this._logService,
 				);
 			} catch (e) {
@@ -168,8 +173,13 @@ export class BaseSecretStorageService extends Disposable implements ISecretStora
 					key,
 					value,
 					(fullKey, encrypted) => this.setValueInStorage(key, fullKey, encrypted, storageService),
-					// If the storage service is in-memory, we don't need to encrypt
-					this._type === 'in-memory' ? (v) => Promise.resolve(v) : (v) => this._encryptionService.encrypt(v),
+					// Don't encrypt if storage is in-memory or if encryption service is not available
+					async (v) => {
+						if (this._type === 'in-memory' || !await this._encryptionService.isEncryptionAvailable()) {
+							return v;
+						}
+						return this._encryptionService.encrypt(v);
+					},
 					this._logService,
 				);
 			} catch (e) {
@@ -224,8 +234,9 @@ export class BaseSecretStorageService extends Disposable implements ISecretStora
 
 	private async initialize(): Promise<IStorageService> {
 		let storageService;
-		if (!this._useInMemoryStorage && await this._encryptionService.isEncryptionAvailable()) {
-			this._logService.trace(`[SecretStorageService] Encryption is available, using persisted storage`);
+		if (!this._useInMemoryStorage) {
+			// Use persisted storage when not forced to use in-memory
+			this._logService.trace(`[SecretStorageService] Using persisted storage`);
 			this._type = 'persisted';
 			storageService = this._storageService;
 		} else {
@@ -233,7 +244,7 @@ export class BaseSecretStorageService extends Disposable implements ISecretStora
 			if (this._type === 'in-memory') {
 				return this._storageService;
 			}
-			this._logService.trace('[SecretStorageService] Encryption is not available, falling back to in-memory storage');
+			this._logService.trace('[SecretStorageService] Falling back to in-memory storage');
 			this._type = 'in-memory';
 			storageService = this._register(new InMemoryStorageService());
 		}
