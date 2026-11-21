@@ -177,15 +177,14 @@ class RemoteExtensionHostAgentServer extends Disposable implements IServerAPI {
 
 			const requestOrigin = req.headers['origin'];
 			const responseHeaders = getRemoteResourceResponseHeaders(requestOrigin, origin => this._webEndpointOriginChecker.matches(origin));
-			if (this._environmentService.isBuilt) {
-				if (isEqualOrParent(filePath, this._environmentService.builtinExtensionsPath, !platform.isLinux)
-					|| isEqualOrParent(filePath, this._environmentService.extensionsPath, !platform.isLinux)
-				) {
-					responseHeaders['Cache-Control'] = 'public, max-age=31536000';
-				}
+			const isExtensionFile = isEqualOrParent(filePath, this._environmentService.builtinExtensionsPath, !platform.isLinux)
+				|| isEqualOrParent(filePath, this._environmentService.extensionsPath, !platform.isLinux);
+			if (this._environmentService.isBuilt && isExtensionFile) {
+				responseHeaders['Cache-Control'] = 'public, max-age=31536000';
 			}
 
-			return serveFile(filePath, CacheControl.ETAG, this._logService, req, res, responseHeaders);
+			const cacheControl = this._environmentService.args['disable-file-cache'] && !isExtensionFile ? CacheControl.NO_CACHING : CacheControl.ETAG;
+			return serveFile(filePath, cacheControl, this._logService, req, res, responseHeaders);
 		}
 
 		// workbench web UI
